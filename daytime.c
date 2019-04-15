@@ -83,8 +83,12 @@ int message(char* msg, int socket){
 
 int getMessage(int socket){
     char buffer[256];
-    if(recv(socket,buffer, 256) < 0){return errorHandler("Failed to recieve message.");}
-    printf("Recieved: %s",buffer);
+    int len;
+    if((len=recv(socket,buffer, 256,0)) < 0){return errorHandler("Failed to recieve message.");}
+    if(len < 256){
+        buffer[len] = '\0';
+    }
+    printf("Recieved: %s\n",buffer);
     return 0;
 }
 

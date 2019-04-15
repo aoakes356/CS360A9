@@ -3,10 +3,12 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <time.h>
+#include <errno.h>
 
 #define CUST_PORT 49999
 
@@ -43,7 +45,7 @@ int errorHandler(char* message){ // Just a convenient method to have.
 int startServer(){
     // Create the socket
     int sock = socket(PF_INET,SOCK_STREAM, IPPROTO_TCP);
-    struck sockaddr_in inSockAddr;
+    struct sockaddr_in inSockAddr;
     // Again not sure why this is necessary.
     memset(&inSockAddr, 0, sizeof(inSockAddr));
     inSockAddr.sin_family = AF_INET;
@@ -67,9 +69,9 @@ int connectionHandler(int socket){
         // child.
         time_t t = time(NULL);
         struct tm ltime = *localtime(&t);
-        char message[256];
-        sprintf(message,"%02d:%02d %02d-%02d-%04d",ltime.tm_hour, ltime.tm_min, ltime.tm_mon+1, ltime.tm_mday, ltime.tm_year+1900);
-        if(message(message,socket) < 0){exit(1);}
+        char buffer[256];
+        sprintf(buffer,"%02d:%02d %02d-%02d-%04d",ltime.tm_hour, ltime.tm_min, ltime.tm_mon+1, ltime.tm_mday, ltime.tm_year+1900);
+        if(message(buffer,socket) < 0){exit(1);}
         exit(0);
     }else{
         return 0;
@@ -78,8 +80,8 @@ int connectionHandler(int socket){
 
 int getHost(struct sockaddr_in client){
     struct hostent* hostEntry;
-    hostEntry = gethostbyaddr(&(client.sin_addr),sizeof(struct in_addr,AF_INET));
-    if(hostEntry->h_name == NULL){
+    hostEntry = gethostbyaddr(&(client.sin_addr),sizeof(struct in_addr),AF_INET);
+    if(hostEntry->h_name == NULL || hostEntry->h_name[0] == '\0'){
         return -1;
     }
     printf("%s\n",hostEntry->h_name);
