@@ -73,7 +73,7 @@ int serverConnect(char* ip){
     if(stat < 0){return errorHandler("Failed to connect to the server.");}
     return sock;
 }
-
+// Don't really need this in the client but oh well.
 int message(char* msg, int socket){
     int len = strlen(msg);
     if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
@@ -81,6 +81,7 @@ int message(char* msg, int socket){
 
 }
 
+// Get a message from the server.
 int getMessage(int socket){
     char buffer[256];
     int len;
@@ -91,7 +92,7 @@ int getMessage(int socket){
     printf("Recieved: %s\n",buffer);
     return 0;
 }
-
+// Close a socket fd.
 int closeConnection(int socket){
     if(close(socket) < 0){return errorHandler("Failed to close the file descriptor.");}
     return 0;
