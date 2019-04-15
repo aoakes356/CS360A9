@@ -14,6 +14,8 @@
 int serverConnect(char* ip);
 // Sends a message through a connected socket.
 int message(char* msg, int socket);
+// Recieve a message from the connected server.
+int getMessage(int socket);
 // End the connection.
 int closeConnection(int socket);
 // Handles the errors for you.
@@ -31,7 +33,7 @@ int main(int argc, char** argv){
     // Get a connected socket.
     socket = serverConnect(ip);
     // Send a message.
-    if(message("Blah",socket) < 0) { return errorHandler("Failed to send message");}
+    if(getMessage(socket) < 0) { return errorHandler("Failed to recieve message");}
     // Close the connection.
     if(closeConnection(socket) < 0){return errorHandler("Failed to close connection.");}
 }
@@ -60,8 +62,6 @@ int serverConnect(char* ip){
     hostEntry = gethostbyname(ip);
     herror("attempted to get host address");
     int sock = socket(PF_INET,SOCK_STREAM, IPPROTO_TCP);
-    // I dug into the man pages and I don't understand why it was done the way it was
-    // in the slides, it seems h_name will contain the same thing as the first item.
     // Copy the resolved host name from hostEntry into the sockaddr_in struct.
     struct in_addr **pptr = (struct in_addr **) hostEntry->h_addr_list; // From slides
     memcpy(&serverAddr.sin_addr, *pptr, sizeof(struct in_addr));
@@ -81,8 +81,14 @@ int message(char* msg, int socket){
 
 }
 
-int closeConnection(int socket){
+int getMessage(int socket){
+    char buffer[256];
+    if(recv(socket,buffer, 256) < 0){return errorHandler("Failed to recieve message.");}
+    printf("Recieved: %s",buffer);
+    return 0;
+}
 
+int closeConnection(int socket){
     if(close(socket) < 0){return errorHandler("Failed to close the file descriptor.");}
     return 0;
 

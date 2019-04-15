@@ -6,11 +6,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <time.h>
 
 #define CUST_PORT 49999
 
 int startServer();
 int message(char* msg, int socket);
+int connectionHandler(int socket);
+int getHost(struct sockaddr_in client);
 int errorHandler(char* message);
 
 int main(){
@@ -24,6 +27,8 @@ int main(){
         if((connectionfd = accept(socket,(struct sockaddr*)&client,&length)) < 0){
             return errorHandler("Failed to accept a connection.");
         }
+        if(getHost(client) < 0){errorHandler("Failed to get hostname");}
+        connectionHandler(connectionfd);
     }
 
 
@@ -53,6 +58,32 @@ int startServer(){
     if(listen(sock,100) < 0){ return errorHandler("Failed to activate listening.");}
     return sock;
 
+}
+int connectionHandler(int socket){
+    int res = fork();
+    if(res < 0){
+        return errorHandler("Failed to fork process.");
+    }else if(!res){
+        // child.
+        time_t t = time(NULL);
+        struct tm ltime = *localtime(&t);
+        char message[256];
+        sprintf(message,"%02d:%02d %02d-%02d-%04d",ltime.tm_hour, ltime.tm_min, ltime.tm_mon+1, ltime.tm_mday, ltime.tm_year+1900);
+        if(message(message,socket) < 0){exit(1);}
+        exit(0);
+    }else{
+        return 0;
+    }
+}
+
+int getHost(struct sockaddr_in client){
+    struct hostent* hostEntry;
+    hostEntry = gethostbyaddr(&(client.sin_addr),sizeof(struct in_addr,AF_INET));
+    if(hostEntry->h_name == NULL){
+        return -1;
+    }
+    printf("%s\n",hostEntry->h_name);
+    return 0;
 }
 
 int message(char* msg, int socket){
