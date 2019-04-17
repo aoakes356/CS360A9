@@ -9,7 +9,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-#define CUST_PORT 49999
+// Client Code.
+
+#define CUST_PORT 49999 
 // Returns a connected socket.
 int serverConnect(char* ip);
 // Sends a message through a connected socket.
@@ -91,7 +93,6 @@ int getMessage(int socket){
     printf("Recieved: %s\n",buffer);
     return 0;
 }
-
 int closeConnection(int socket){
     if(close(socket) < 0){return errorHandler("Failed to close the file descriptor.");}
     return 0;
