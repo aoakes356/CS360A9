@@ -75,7 +75,7 @@ int serverConnect(char* ip){
     if(stat < 0){return errorHandler("Failed to connect to the server.");}
     return sock;
 }
-
+// Don't really need this in the client but oh well.
 int message(char* msg, int socket){
     int len = strlen(msg);
     if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
@@ -83,6 +83,7 @@ int message(char* msg, int socket){
 
 }
 
+// Get a message from the server.
 int getMessage(int socket){
     char buffer[256];
     int len;

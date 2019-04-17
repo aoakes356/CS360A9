@@ -12,12 +12,16 @@
 #include <sys/wait.h>
 // Server Code.
 
-#define CUST_PORT 49999 
-
+#define CUST_PORT 49999
+// Create the socket and set it to listen for connections.
 int startServer();
+// Send a message to a connection.
 int message(char* msg, int socket);
+// Forks and deals with a connection.
 int connectionHandler(int socket);
+// Get the name of the connection host.
 int getHost(struct sockaddr_in client);
+// Deal with errors.
 int errorHandler(char* message);
 
 int main(){
