@@ -224,5 +224,32 @@ int moreify(char** arguments){
     }
 }
 
+moreifyfd(int fd2){
+    int fd[2];
+    char* args[5] = {"more","-20",NULL};
+    if(pipe(fd) < 0){ return errorHandler("Failed to create pipe.");}
+    int res = fork();
+    char c;
+    if(res < 0){return errorHandler("Failed to fork.");}
+    if(!res){
+        // Child.
+        dup2(fd[1],1);
+        if(close(fd[0]) < 0) fprintf(stderr,"%s\n",strerror(errno));
+        int count = 1;
+        while(count){
+            if(count = read(fd2,&c,1) < 0){return errorHandler("Failed to read stuff.");}
+            if(count){
+                if(write(1,&c,1) < 0){return errorHandler("Failed to write stuff.");}
+            }
+        }
+    }else{
+        // Parent.
+        wait(NULL);
+        dup2(fd[0],0);
+        if(close(fd[1]) < 0) fprintf(stderr,"%s\n",strerror(errno));
+        execvp(args[0],args);
+        return errorHandler("Failed to execute more!");
+    }
 
+}
 
