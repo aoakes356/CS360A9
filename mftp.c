@@ -20,9 +20,10 @@ int serverConnect(char* ip);
 // Process the arguments. This thing uses malloc >:O
 // Reads from stdin.
 char** getArgs(int* argc);
-int processArgs(char** arguments);
+int processArgs(char** arguments, int socket, int args, char* ip);
 int getWord(char* word, int size);
 int moreify(char** arguments);
+int moreifyfd(int fd2);
 
 int main(int argc, char** argv){
     char* ip;
@@ -45,7 +46,7 @@ int main(int argc, char** argv){
     char** temp;
     while(1){
         temp = getArgs(&argCount);
-        if((res = processArgs(temp)) || res < 0){ // If true, exit was recieved.
+        if((res = processArgs(temp, socket, argCount, ip)) || res < 0){ // If true, exit was recieved.
             break;
         } 
         //Do stuff with args here.
@@ -59,6 +60,37 @@ int main(int argc, char** argv){
     // Close the connection.
     if(closeConnection(socket) < 0){return errorHandler("Failed to close connection.");}
 }
+
+char* getwordsocket(int socket){
+    int rd = 1, size = 10, count = 0;
+    char* clientIn = malloc(sizeof(char)*size);
+    char* clsave = clientIn;
+    while(rd){
+        printf("Waiting for the server to respond.....\n");
+        if((rd = read(socket,clientIn,1)) < 0){ 
+            errorHandler("Read error in connectionHandler");
+            return NULL;
+        }
+        count++;
+        if(count >= size && rd){
+            size *= 2;
+            clsave = realloc(clsave,size*sizeof(char));
+        }
+        if(*clientIn == '\n' || *clientIn == EOF){
+            *clientIn = '\0';
+            break;
+        }
+        printf("read in: %c\n",*clientIn);
+        clientIn++;
+    }
+    if(count <= 1){
+        free(clsave);
+        return NULL;
+    }
+    return clsave;
+
+}
+
 
 int errorHandler(char* message){ // Just a convenient method to have.
     fprintf(stderr,"CSTMERR %s: %s\n", message, strerror(errno));
@@ -105,13 +137,41 @@ int serverConnect(char* ip){
     // Attempt to connect to the server
     // cast serverAddr to the generic socket address struct.
     int stat = connect(sock, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
-    if(stat < 0){return errorHandler("Failed to connect to the server.");}
+    if(stat < 0){return errorHandler("Failed to connect to the server. SERVERCONNECT");}
     return sock;
 }
-// Don't really need this in the client but oh well.
+int serverConnectPort(char* ip, int port){
+
+    // Will store the server address.
+    struct sockaddr_in serverAddr;
+    // Set all values of serverAddr to 0.
+    // Really not sure why this is necessary, but it is done in the slides.
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = port;
+    // Used to store the result of gethostby name 
+    // will contain the server address in h_name
+    struct hostent* hostEntry;
+    hostEntry = gethostbyname(ip);
+    herror("attempted to get host address");
+    int sock = socket(PF_INET,SOCK_STREAM, IPPROTO_TCP);
+    // Copy the resolved host name from hostEntry into the sockaddr_in struct.
+    struct in_addr **pptr = (struct in_addr **) hostEntry->h_addr_list; // From slides
+    memcpy(&serverAddr.sin_addr, *pptr, sizeof(struct in_addr));
+
+    if(sock < 0) {return errorHandler("Failed to create the socket.");}
+    // Attempt to connect to the server
+    // cast serverAddr to the generic socket address struct.
+    int stat = connect(sock, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
+    if(stat < 0){return errorHandler("Failed to connect to the server. SERVERCONNECTPORT");}
+    return sock;
+}
+
 int message(char* msg, int socket){
     int len = strlen(msg);
-    if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
+    //if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
+    int res = write(socket,msg,len+1);
+    if(res != len+1){return errorHandler("Didn't write the entire message?!??!?!?!?!??!??!!!");}
     return 0;
 
 }
@@ -144,7 +204,7 @@ char** getArgs(int* argc){
         }
     }
     argument_list[count++] = NULL;
-    *argc = count;
+    *argc = count-1;
     return argument_list;
 }
 
@@ -162,43 +222,100 @@ int getWord(char* word, int size){
     return c;
 }
 
+int getPort(char* serverresponse){
+    // return -1 for error.
+    int port;
+    if(!sscanf(serverresponse,"A%d",&port)){ return errorHandler("No port given in response, Error.");}
+    return port;
+}
 
-int processArgs(char** arguments){
+
+
+int processArgs(char** arguments, int socket, int argc, char* ip){
+    char* argbuffer;
+    char* serverresponse;
+    int size;
+    if(argc > 1){
+        size = strlen(arguments[1])+3;
+    }else{
+        size = 3;
+    }
+    argbuffer = malloc(sizeof(char)*size);
     if(strncmp(arguments[0],"exit",5) == 0){
+        free(argbuffer);
         return 1;   // Exit code is 1.
     }else if(strncmp(arguments[0],"cd",3) == 0){
         // Change directory
         if(chdir(arguments[1]) < 0){return errorHandler("Failed to change directory locally.");}
-        return 0;
     }else if(strncmp(arguments[0],"ls",3) == 0){
         // Print out stuff in cwd ls -l.
         char* args[3] = {"ls","-l",NULL};
         if(moreify(args) < 0){ return errorHandler("Failed to ls -l");}
-        return 0;
-
     }else if(strncmp(arguments[0],"rcd",4) == 0){
         // Change current working directory of current connection to server.
-
-        return 0;
-
+        argbuffer[0] = 'C';argbuffer[2] = '\0';
+        if(argc > 1){
+            strncat(argbuffer,arguments[1],size-3);
+            argbuffer[size-4] = '\n';
+        }
+        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
     }else if(strncmp(arguments[0],"rls",4) == 0){
         // Print stuff from cwd of server child into client console.
-        return 0;
-
+        // Send D to establish data connection, then send L to have it send back ls -l output, moreify it.
+        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
+        printf("Sent a message to the server\n");
+        // Establish the connection for the output to come back on.
+        serverresponse = getwordsocket(socket);
+        if(serverresponse == NULL){ return errorHandler("Failed to get a response from the server.");}
+        printf("--ServerResponse %s\n",serverresponse);
+        int dataPort = getPort(serverresponse);
+        if(dataPort < 0){return errorHandler("Failed to get a valid port number from the server response.");}
+        printf("Le port: %i\n",dataPort);
+        if(serverConnectPort(ip, dataPort) < 0){ return errorHandler("Failed to connect to the given IP and port");}
+        // Make a connection to that port on this side.
+        argbuffer[0] = 'L';argbuffer[1] = '\0';
+        if(argc > 1){
+            strncat(argbuffer,arguments[1],size-3);
+            argbuffer[size-4] = '\n';
+        }
+        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
+        //pipe the fd into more :D almost done.
+        if(moreifyfd(dataPort) < 0){return errorHandler("Failed to read from the dataport.");}
     }else if(strncmp(arguments[0],"get",4) == 0){
         // Get a file from the server
-        return 0;
-
+        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
+        //Establish the connection.
+        argbuffer[0] = 'G';argbuffer[2] = '\0';
+        if(argc > 1){
+            strncat(argbuffer,arguments[1],size-3);
+            argbuffer[size-4] = '\n';
+        }
+        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
     }else if(strncmp(arguments[0],"show",5) == 0){
         // Show the contents of pathname on server to client.
-        return 0;
-
+        // Like get but instead of writing to the hard drive, print to stdout pipe into more.
+        // Get a file from the server
+        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
+        //Establish the connection.
+        argbuffer[0] = 'G';argbuffer[2] = '\0';
+        if(argc > 1){
+            strncat(argbuffer,arguments[1],size-3);
+            argbuffer[size-4] = '\n';
+        }
+        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
     }else if(strncmp(arguments[0],"put",4) == 0){
         // put a file from the client onto the server.
-        return 0;
-
+        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
+        //Establish the connection.
+        argbuffer[0] = 'P';argbuffer[2] = '\0';
+        if(argc > 1){
+            strncat(argbuffer,arguments[1],size-3);
+            argbuffer[size-4] = '\n';
+        }
+        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
     }
-    return -1;
+    free(argbuffer);
+    return 0;
 }
 
 int moreify(char** arguments){
@@ -224,7 +341,7 @@ int moreify(char** arguments){
     }
 }
 
-moreifyfd(int fd2){
+int moreifyfd(int fd2){
     int fd[2];
     char* args[5] = {"more","-20",NULL};
     if(pipe(fd) < 0){ return errorHandler("Failed to create pipe.");}

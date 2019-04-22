@@ -15,10 +15,6 @@ int errorHandler(char* message);
 int changeDirectory(char* path);
 // Show the contents of the given directory.
 int printD();
-// Pipe a command into more.
-int moreify(char** arguments);
-// Pipe a file descriptor into more
-int moreifyfd(int fd2);
 
 
 #endif
