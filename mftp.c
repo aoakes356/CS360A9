@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include "mftp.h"
 #include <sys/wait.h>
+#include <fcntl.h>
 
 // Client Code.
 
@@ -21,7 +22,7 @@ int serverConnect(char* ip);
 // Reads from stdin.
 char** getArgs(int* argc);
 int processArgs(char** arguments, int socket, int args, char* ip);
-int getWord(char* word, int size);
+int getWord(char*** argument_list, int pos, int size);
 int moreify(char** arguments);
 int moreifyfd(int fd2);
 
@@ -46,17 +47,19 @@ int main(int argc, char** argv){
     char** temp;
     while(1){
         temp = getArgs(&argCount);
-        if((res = processArgs(temp, socket, argCount, ip)) || res < 0){ // If true, exit was recieved.
+        if((res = processArgs(temp, socket, argCount, ip)) && res > 0){ // If true, exit was recieved.
+            printf("The client is exiting");
             break;
         } 
-        //Do stuff with args here.
         for(int i = 0; i < argCount; i++){
             free(temp[i]);
         }
         free(temp);
     }
-    printf("Exiting to get message.\n");
-    if(getMessage(socket) < 0) { return errorHandler("Failed to recieve message");}
+    for(int i = 0; i < argCount; i++){
+        free(temp[i]);
+    }
+    free(temp);
     // Close the connection.
     if(closeConnection(socket) < 0){return errorHandler("Failed to close connection.");}
 }
@@ -64,32 +67,39 @@ int main(int argc, char** argv){
 char* getwordsocket(int socket){
     int rd = 1, size = 10, count = 0;
     char* clientIn = malloc(sizeof(char)*size);
-    char* clsave = clientIn;
+    char c;
     while(rd){
-        printf("Waiting for the server to respond.....\n");
-        if((rd = read(socket,clientIn,1)) < 0){ 
+        printf("Reading...\n");
+        if((rd = read(socket,&c,1)) < 0){
+            printf("Reads before failure %i\n",count);
             errorHandler("Read error in connectionHandler");
+            free(clientIn);
             return NULL;
         }
-        count++;
+        clientIn[count++] = c;
         if(count >= size && rd){
             size *= 2;
-            clsave = realloc(clsave,size*sizeof(char));
+            clientIn = realloc(clientIn,size*sizeof(char));
         }
-        if(*clientIn == '\n' || *clientIn == EOF){
-            *clientIn = '\0';
+        if(clientIn[count-1] == '\n' || clientIn[count-1] == EOF){
+            clientIn[count-1] = '\0';
             break;
         }
-        printf("read in: %c\n",*clientIn);
-        clientIn++;
+        printf("read in: %c\n",c);
     }
     if(count <= 1){
-        free(clsave);
+        free(clientIn);
         return NULL;
     }
-    return clsave;
+    if(rd){ // Get that null terminator out of that buffer >:I
+        read(socket, &c, 1);
+    }
+    printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
+    printf("First character of the return %i\n",clientIn[0]);
+    return clientIn;
 
 }
+
 
 
 int errorHandler(char* message){ // Just a convenient method to have.
@@ -97,19 +107,7 @@ int errorHandler(char* message){ // Just a convenient method to have.
     printf("%s: %s\n", message, strerror(errno));
     return -1;
 }
-int printD(){
-    int res = fork();
-    if(res < 0){return errorHandler("Failed to fork in printD");}
-    if(!res){
-        // Child
-        char* args[5] = {"ls","-l",NULL};
-        execvp(args[0],(char**)args);
-        exit(1);
-    }else{
-        wait(NULL); // I thought this wouldn't be needed, but it helps even though the child is vaporized by exec.
-        return 0;
-    }
-}
+
 
 /* Create the socket for the client side to connect to the server
  * Then connect.
@@ -177,15 +175,33 @@ int message(char* msg, int socket){
 }
 
 // Get a message from the server.
-int getMessage(int socket){
-    char buffer[256];
-    int len;
-    if((len=recv(socket,buffer, 256,0)) < 0){return errorHandler("Failed to recieve message.");}
-    if(len < 256){
-        buffer[len] = '\0';
+char* getData(int socket,int* length){
+    int rd = 1, size = 10, count = 0;
+    char* clientIn = malloc(sizeof(char)*size);
+    char c;
+    while(rd){
+        if((rd = read(socket,&c,1)) < 0){
+            errorHandler("Read error in connectionHandler");
+            return NULL;
+        }
+        clientIn[count++] = c;
+        if(count >= size && rd){
+            size *= 2;
+            clientIn = realloc(clientIn,size*sizeof(char));
+        }
+        if(clientIn[count-1] == EOF){
+            clientIn[count-1] = '\0';
+            break;
+        }
     }
-    printf("Recieved: %s\n",buffer);
-    return 0;
+    if(count <= 1){
+        clientIn[0] = '\0';
+        count = 1;
+    }
+    //printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
+    //printf("First character of the return %i\n",clientIn[0]);
+    *length = count;
+    return clientIn;
 }
 int closeConnection(int socket){
     if(close(socket) < 0){return errorHandler("Failed to close the file descriptor.");}
@@ -197,19 +213,21 @@ char** getArgs(int* argc){
     int size = 3, count = 0, wordsize = 10, c;
     char** argument_list = malloc(sizeof(char*)*size);
     printf("> ");
-    while((c = getWord(argument_list[count++]=malloc(sizeof(char)*wordsize),wordsize)) != EOF && c != '\n'){
+    while((c = getWord(&argument_list,count,wordsize)) != EOF && c != '\n'){
+        count += 1;
         if(count >= size){
             size *= 2;
             argument_list = realloc(argument_list, size*sizeof(char*));
         }
     }
-    argument_list[count++] = NULL;
-    *argc = count-1;
+    argument_list[count+1] = NULL;
+    *argc = count+1;
     return argument_list;
 }
 
-int getWord(char* word, int size){
+int getWord(char*** argument_list, int pos, int size){
     int count = 0;
+    char* word = malloc(sizeof(char)*size);
     char c;
     while((c = getchar()) != EOF && (!isspace(c))){
         word[count++] = c;
@@ -219,17 +237,70 @@ int getWord(char* word, int size){
         }
     }
     word[count] = '\0';
+    printf("%s Aquired word size:1 %i\n",word,size);
+    (*argument_list)[pos] = word;
+    printf("%s Aquired word size:2 %i\n",word,size);
+    printf("%s Aquired word size:3 %i\n",(*argument_list)[pos],size);
     return c;
 }
-
+// Get the string from the server response.
 int getPort(char* serverresponse){
     // return -1 for error.
     int port;
     if(!sscanf(serverresponse,"A%d",&port)){ return errorHandler("No port given in response, Error.");}
     return port;
 }
+// Establish a dataconnection with the server, return a file descriptor or -1 for error.
+int getDataConnection(int socket, char* ip){
+    int datafd;
+    if(message("D\n",socket) < 0){
+        return errorHandler("Failed to message data signal in arg handler.");
+    }
+    printf("Sent a message to the server\n");
+    // Establish the connection for the output to come back on.
+    char* serverresponse = getwordsocket(socket);
+    if(serverresponse == NULL){ 
+        return errorHandler("Failed to get a response from the server.");
+    }
+    printf("--ServerResponse %s\n",serverresponse);
+    int dataPort = getPort(serverresponse); // Get the port from t
+    if(dataPort < 0){
+        return errorHandler("Failed to get a valid port number from the server response.");
+    }
+    printf("Le port: %i\n",dataPort);
+    if((datafd=serverConnectPort(ip, dataPort)) < 0){ 
+        return errorHandler("Failed to connect to the given IP and port");
+    }
+    printf("connected to le port on the server.");
+    return datafd;
+}
 
+char* getFileName(char* path){
+    int len = strlen(path), i;
+    for(i = len-1; i >= 0 && path[i] != '/'; i--){
+        if(path[i] == '\n'){
+            path[i] = '\0';
+        }
+    }
+    return &(path[++i]);
+}
+int createFile(char* path){
+    int fd;
+    if((fd = open(getFileName(path),O_WRONLY | O_CREAT | O_APPEND,0666)) < 0){return errorHandler("Failed to create the new file in current directory.");}
+    printf("New file has the file descriptor %i\n",fd);
+    return fd;
+}
 
+int copyFile(int source, int destination){
+    char c; // Wee little buffer.
+    int res;
+    printf("Writing to fd: %i\n",destination);
+    int len;
+    char* data = getData(source,&len);
+    if(data == NULL){return errorHandler("Failed to read the source file.");}
+    if(write(destination,data,len) != len){return errorHandler("Error while writing destination file.");}
+    return 0;
+}
 
 int processArgs(char** arguments, int socket, int argc, char* ip){
     char* argbuffer;
@@ -237,136 +308,239 @@ int processArgs(char** arguments, int socket, int argc, char* ip){
     int size;
     if(argc > 1){
         size = strlen(arguments[1])+3;
+        printf("-----------------%s size %i\n",arguments[1],size);
+
     }else{
         size = 3;
+        printf("-----------------%s size %i\n",arguments[1],size);
     }
     argbuffer = malloc(sizeof(char)*size);
     if(strncmp(arguments[0],"exit",5) == 0){
         free(argbuffer);
+        if(message("Q\n",socket) < 0){errorHandler("Failed to end server connection.");}
         return 1;   // Exit code is 1.
     }else if(strncmp(arguments[0],"cd",3) == 0){
         // Change directory
-        if(chdir(arguments[1]) < 0){return errorHandler("Failed to change directory locally.");}
+        if(chdir(arguments[1]) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to change directory locally.");
+        }
     }else if(strncmp(arguments[0],"ls",3) == 0){
         // Print out stuff in cwd ls -l.
         char* args[3] = {"ls","-l",NULL};
-        if(moreify(args) < 0){ return errorHandler("Failed to ls -l");}
-    }else if(strncmp(arguments[0],"rcd",4) == 0){
+        if(moreify(args) < 0){ 
+            free(argbuffer);
+            return errorHandler("Failed to ls -l");
+        }
+    }else if(strncmp(arguments[0],"rcd",3) == 0){
+        printf("aeareareara aAAA Entering rcd\n");
         // Change current working directory of current connection to server.
         argbuffer[0] = 'C';argbuffer[2] = '\0';
         if(argc > 1){
-            strncat(argbuffer,arguments[1],size-3);
-            argbuffer[size-4] = '\n';
+            sprintf(argbuffer,"C%s\n",arguments[1]);
+            printf("!!!!!!!!!!1ARguments to be sent---------------> %s\n",argbuffer);
+        }else{
+            argbuffer[1] = '\n';
+            argbuffer[2] = '\0';
         }
-        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
+
+        if(message(argbuffer,socket) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to message in arg handler.");
+        }
+        serverresponse = getwordsocket(socket);
+        if(serverresponse[0] != 'A'){
+            errorHandler(serverresponse);
+        }
+        free(serverresponse);
     }else if(strncmp(arguments[0],"rls",4) == 0){
         // Print stuff from cwd of server child into client console.
         // Send D to establish data connection, then send L to have it send back ls -l output, moreify it.
-        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
-        printf("Sent a message to the server\n");
-        // Establish the connection for the output to come back on.
-        serverresponse = getwordsocket(socket);
-        if(serverresponse == NULL){ return errorHandler("Failed to get a response from the server.");}
-        printf("--ServerResponse %s\n",serverresponse);
-        int dataPort = getPort(serverresponse);
-        if(dataPort < 0){return errorHandler("Failed to get a valid port number from the server response.");}
-        printf("Le port: %i\n",dataPort);
-        if(serverConnectPort(ip, dataPort) < 0){ return errorHandler("Failed to connect to the given IP and port");}
+        int datafd = getDataConnection(socket,ip);
+        if(datafd < 0){return errorHandler("Failed to get data connection.");}
         // Make a connection to that port on this side.
         argbuffer[0] = 'L';argbuffer[1] = '\0';
         if(argc > 1){
             strncat(argbuffer,arguments[1],size-3);
             argbuffer[size-4] = '\n';
+        }else{
+            argbuffer[1] = '\n';
+            argbuffer[2] = '\0';
         }
-        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
-        //pipe the fd into more :D almost done.
-        if(moreifyfd(dataPort) < 0){return errorHandler("Failed to read from the dataport.");}
-    }else if(strncmp(arguments[0],"get",4) == 0){
+        printf("Constructed command: %s",argbuffer);
+        if(message(argbuffer,socket) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to message in arg handler.");
+        }
+        printf("Sent command to the parent. Waiting for acceptance.");
+        free(serverresponse);
+        serverresponse = getwordsocket(socket);
+        // recieve validation from the server. 
+        if(serverresponse == NULL || strncmp(serverresponse,"A",2)){
+            free(argbuffer);
+            free(serverresponse);
+            return errorHandler("Server failed to ls, non-accept response.");
+        }
+        free(serverresponse);
+        // Thank you server I feel much better now.
+        // pipe the fd into more :D almost done.
+        if(moreifyfd(datafd) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to read from the dataport.");
+        }
+        if(close(datafd) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to close datafd.");
+        }
+    }else if(strncmp(arguments[0],"get",3) == 0){
         // Get a file from the server
-        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
+        printf("Getting a file from teh server.\n");
+        int datafd = getDataConnection(socket,ip);
+        if(datafd < 0){return errorHandler("Failed to get data connection.");}
         //Establish the connection.
         argbuffer[0] = 'G';argbuffer[2] = '\0';
         if(argc > 1){
-            strncat(argbuffer,arguments[1],size-3);
-            argbuffer[size-4] = '\n';
+            sprintf(argbuffer,"G%s\n",arguments[1]);
+        }else{
+            argbuffer[1] = '\n';
+            argbuffer[2] = '\0';
         }
-        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
+
+        if(message(argbuffer,socket) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to message in arg handler.");
+        }
+        serverresponse = getwordsocket(socket);
+        if(serverresponse[0] != 'A'){return errorHandler("Failed to get file, non-accept response.");}
+        printf("File is ready to be read in\n");
+        int new;
+        if((new = createFile(&(argbuffer[1]))) < 0){return errorHandler("Unable to create file.");}
+        if(copyFile(datafd,new) < 0){return errorHandler("Unable to copy data to new file.");}
+        if(close(datafd) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to close datafd.");
+        }
     }else if(strncmp(arguments[0],"show",5) == 0){
         // Show the contents of pathname on server to client.
         // Like get but instead of writing to the hard drive, print to stdout pipe into more.
         // Get a file from the server
-        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
+        // Get a file from the server
+        printf("Getting a file from teh server.\n");
+        int datafd = getDataConnection(socket,ip);
+        if(datafd < 0){return errorHandler("Failed to get data connection.");}
         //Establish the connection.
         argbuffer[0] = 'G';argbuffer[2] = '\0';
         if(argc > 1){
-            strncat(argbuffer,arguments[1],size-3);
-            argbuffer[size-4] = '\n';
+            sprintf(argbuffer,"G%s\n",arguments[1]);
+        }else{
+            argbuffer[1] = '\n';
+            argbuffer[2] = '\0';
         }
-        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
-    }else if(strncmp(arguments[0],"put",4) == 0){
+
+        if(message(argbuffer,socket) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to message in arg handler.");
+        }
+        serverresponse = getwordsocket(socket);
+        if(serverresponse[0] != 'A'){return errorHandler("Failed to get file, non-accept response.");}
+        printf("File is ready to be read in\n");
+        int new;
+        if((new = createFile(&(argbuffer[1]))) < 0){return errorHandler("Unable to create file.");}
+        if(moreifyfd(datafd) < 0){return errorHandler("Unable to copy data to new file.");}
+        if(close(datafd) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to close datafd.");
+        }
+    }else if(strncmp(arguments[0],"put",3) == 0){
         // put a file from the client onto the server.
-        if(message("D\n",socket) < 0){return errorHandler("Failed to message data signal in arg handler.");}
+        int datafd = getDataConnection(socket,ip);
+        if(datafd < 0){return errorHandler("Failed to get data connection.");}
         //Establish the connection.
         argbuffer[0] = 'P';argbuffer[2] = '\0';
         if(argc > 1){
-            strncat(argbuffer,arguments[1],size-3);
-            argbuffer[size-4] = '\n';
+            sprintf(argbuffer,"P%s\n",getFileName(arguments[1]));
+        }else{
+            argbuffer[1] = '\n';
+            argbuffer[2] = '\0';
         }
-        if(message(argbuffer,socket) < 0){return errorHandler("Failed to message in arg handler.");}
+
+        if(message(argbuffer,socket) < 0){
+            free(argbuffer);
+            return errorHandler("Failed to message in arg handler.");
+        }
+        serverresponse = getwordsocket(socket);
+        if(serverresponse[0] != 'A'){return errorHandler("Failed, non-accept response.");}
+        int fd = open(arguments[1],O_RDONLY);
+        if(fd < 0){ return errorHandler("Failed to open file.");}
+        if(copyFile(fd, datafd) < 0){ return errorHandler("Failed to write to the data connection.");} 
     }
     free(argbuffer);
     return 0;
 }
 
 int moreify(char** arguments){
-    int fd[2];
-    char* args[5] = {"more","-20",NULL};
-    if(pipe(fd) < 0){ return errorHandler("Failed to create pipe.");}
-    int res = fork();
-    if(res < 0){return errorHandler("Failed to fork.");}
-    if(!res){
-        // Child.
-        dup2(fd[1],1);
-        if(close(fd[0]) < 0) fprintf(stderr,"%s\n",strerror(errno));
-        execvp(arguments[0],arguments);
-        return errorHandler("Failed to execute more!");
+    int outer = fork();
+    if(outer < 0){return errorHandler("Failed to fork.");}
+    if(!outer){
+        int fd[2];
+        char* args[5] = {"more","-20",NULL};
+        if(pipe(fd) < 0){ return errorHandler("Failed to create pipe.");}
+        int res = fork();
+        if(res < 0){return errorHandler("Failed to fork.");}
+        if(!res){
+            // Child.
+            dup2(fd[1],1);
+            if(close(fd[0]) < 0) fprintf(stderr,"%s\n",strerror(errno));
+            execvp(arguments[0],arguments);
+            return errorHandler("Failed to execute crap");
 
+        }else{
+            // Parent.
+            wait(NULL);
+            dup2(fd[0],0);
+            if(close(fd[1]) < 0) fprintf(stderr,"%s\n",strerror(errno));
+            execvp(args[0],args);
+            return errorHandler("Failed to execute more!");
+        }
     }else{
-        // Parent.
         wait(NULL);
-        dup2(fd[0],0);
-        if(close(fd[1]) < 0) fprintf(stderr,"%s\n",strerror(errno));
-        execvp(args[0],args);
-        return errorHandler("Failed to execute crap.");
+        return 0;
     }
 }
 
 int moreifyfd(int fd2){
-    int fd[2];
-    char* args[5] = {"more","-20",NULL};
-    if(pipe(fd) < 0){ return errorHandler("Failed to create pipe.");}
-    int res = fork();
-    char c;
-    if(res < 0){return errorHandler("Failed to fork.");}
-    if(!res){
-        // Child.
-        dup2(fd[1],1);
-        if(close(fd[0]) < 0) fprintf(stderr,"%s\n",strerror(errno));
-        int count = 1;
-        while(count){
-            if(count = read(fd2,&c,1) < 0){return errorHandler("Failed to read stuff.");}
-            if(count){
-                if(write(1,&c,1) < 0){return errorHandler("Failed to write stuff.");}
+    int outer = fork();
+    if(outer < 0){return errorHandler("Failed to fork.");}
+    if(!outer){
+        int fd[2];
+        char* args[5] = {"more","-20",NULL};
+        if(pipe(fd) < 0){ return errorHandler("Failed to create pipe.");}
+        int res = fork();
+        if(res < 0){return errorHandler("Failed to fork.");}
+        if(!res){
+            // Child.
+            dup2(fd[1],1);
+            if(close(fd[0]) < 0) fprintf(stderr,"%s\n",strerror(errno));
+            //execvp(arguments[0],arguments);
+            //return errorHandler("Failed to execute crap");
+            int length;
+            char* buffer = getData(fd2,&length);
+            if(write(1,buffer,length) == length){
+                exit(0);
+            }else{
+                exit(1);
             }
+        }else{
+            // Parent.
+            wait(NULL);
+            dup2(fd[0],0);
+            if(close(fd[1]) < 0) fprintf(stderr,"%s\n",strerror(errno));
+            execvp(args[0],args);
+            return errorHandler("Failed to execute more!");
         }
     }else{
-        // Parent.
         wait(NULL);
-        dup2(fd[0],0);
-        if(close(fd[1]) < 0) fprintf(stderr,"%s\n",strerror(errno));
-        execvp(args[0],args);
-        return errorHandler("Failed to execute more!");
+        return 0;
     }
-
 }
 

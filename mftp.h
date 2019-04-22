@@ -5,8 +5,6 @@
 
 // Sends a message through a connected socket.
 int message(char* msg, int socket);
-// Recieve a message from the connected server.
-int getMessage(int socket);
 // End the connection.
 int closeConnection(int socket);
 // Handles the errors for you.
