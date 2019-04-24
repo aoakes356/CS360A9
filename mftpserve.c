@@ -98,28 +98,32 @@ char* getwordsocket(int socket){
         if((rd = read(socket,&c,1)) < 0){ 
             printf("Reads before failure %i\n",count);
             errorHandler("Read error in connectionHandler");
+            free(clientIn);
             return NULL;
         }
-        clientIn[count++] = c; 
-        if(count >= size && rd){
-            size *= 2;
-            clientIn = realloc(clientIn,size*sizeof(char));
+        if(rd > 0){
+            clientIn[count++] = c; 
+            if(count >= size && rd){
+                size *= 2;
+                clientIn = realloc(clientIn,size*sizeof(char));
+            }
+            if(clientIn[count-1] == '\n' || clientIn[count-1] == '\0'){
+                clientIn[count-1] = '\0';
+                break;
+            }
+            printf("read in: %c\n",c);
+        }else{
+            free(clientIn);
+            errorHandler("Data Connection closed by host.");
+            return NULL;
         }
-        if(clientIn[count-1] == '\n' || clientIn[count-1] == EOF || clientIn[count-1] == '\0'){
-            clientIn[count-1] = '\0';
-            break;
-        }/*else if(clientIn[count-1] == 'D' || clientIn[count-1] == 'L' || clientIn[count-1] == 'Q'){
-            clientIn[count] = '\0';
-            break;
-        }*/
-        printf("read in: %c\n",c);
+
     }
     if(count <= 1){
         free(clientIn);
         return NULL;
     }
     printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
-    printf("First character of the return %i\n",clientIn[0]);
     return clientIn;
 
 }
@@ -130,6 +134,7 @@ char* getData(int socket,int* length){
     while(rd){
         if((rd = read(socket,&c,1)) < 0){
             errorHandler("Read error in connectionHandler");
+            free(clientIn);
             return NULL;
         }
         clientIn[count++] = c;
@@ -138,13 +143,14 @@ char* getData(int socket,int* length){
             clientIn = realloc(clientIn,size*sizeof(char));
         }
         if(clientIn[count-1] == EOF){
-            clientIn[count-1] = '\0';
-            break;
+            errorHandler("Recieved EOF from the client in the server child.");
+            free(clientIn);
+            return NULL;
         }
     }
     if(count <= 1){
-       clientIn[0] = '\0'; 
-       count = 1;
+        clientIn[0] = '\0'; 
+        count = 1;
     }
     //printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
     //printf("First character of the return %i\n",clientIn[0]);
@@ -215,22 +221,35 @@ int dataHandler(int fd, int psocket){
         printf("We boutta LS Wooooo\n");
         char* args[5] = {"ls","-l",NULL};
         if(cmdPipe(fd,args) < 0){
+            free(command);
             if(message("E\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");}
             return errorHandler("Failed to pipe command.");
         }else{
-            if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response to the client, oh dear.");}
+            if(message("A\n",psocket) < 0){
+                free(command);
+                return errorHandler("Failed to send accept response to the client, oh dear.");
+            }
         }
+        free(command);
         return 0;
     }else if(strncmp(command,"G",1) == 0){
         // Get a file and put it in your local directoreeeeeeee, requires data connection
         printf("They trynna steal our files.\n");
         char* path = getPath(command);
-        if(path == NULL){return errorHandler("Failed to get a path from the command.");}
+        if(path == NULL){
+            free(command);
+            if(message("ECan't get that file\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");} 
+            return errorHandler("Failed to get a path from the command.");
+        }
         if(filePipe(fd,path) < 0){
+            free(command);
             if(message("ECan't get that file\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");} 
             return errorHandler("Failed to send file to client.");
         }
-        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response.");}
+        if(message("A\n",psocket) < 0){
+            free(command);
+            return errorHandler("Failed to send accept response.");
+        }
         free(path);
     }else if(command[0] == 'P'){
         // PUT A FILE IN THE SERVER AT ITS CURRENT WORKING DIRECTORY o_o, GIB DATA
@@ -294,6 +313,7 @@ int connectionHandler(int socket){
                     // Bad news for the client :(
                     errorHandler("Failed to create data socket!");
                     message("E\n",socket);
+                    free(command);
                     exit(1);
                 }else{
                     sprintf(sName, "A%d\n",name);
@@ -301,12 +321,14 @@ int connectionHandler(int socket){
                     if(message(sName,socket) < 0){
                         // No beuno. Probably cant message that client ¯\_(ツ)_/¯
                         errorHandler("'Guess I'll die?' - Server Child 2019");
+                        free(command);
                         exit(1);
                     }
                 }
                 printf("Successfully sent, awaiting a connection\n");
                 if(dataAccept(datasocket,socket) < 0){return errorHandler("Failed to accept connection, connectionHandler");}
                 printf("Connection has been made!\n");
+                free(command);
             }else if(command[0] == 'C'){
                 // Changin mah directory.
                 printf("Server recieved directory change request\n");
@@ -324,13 +346,13 @@ int connectionHandler(int socket){
                    free(dir);
                    message("A\n",socket);
                 }
-
-
+                free(command);
             }else if(strncmp(command,"Q",2) == 0){
                 // THE CLIENT WANTS YOU DEAD, feels bad man.
                 if(message("A\n",socket) < 0){
                     // No beuno. Probably cant message that client ¯\_(ツ)_/¯
                     errorHandler("'Guess I'll die?' - Server Child 2019");
+                    free(command);
                     exit(1);
                 }
                 break;
@@ -339,7 +361,7 @@ int connectionHandler(int socket){
             command = getwordsocket(socket);
             printf("Server has recieved command %s\n",command);
         }
-
+       
         //if(message(buffer,socket) < 0){exit(1);}
         exit(0);
     }else{
