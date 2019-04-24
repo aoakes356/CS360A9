@@ -213,13 +213,12 @@ int dataHandler(int fd, int psocket){
     if(strncmp(command,"L",2) == 0){
         // ls -l :o requires data connection first. 
         printf("We boutta LS Wooooo\n");
-        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response to the client, oh dear.");}
         char* args[5] = {"ls","-l",NULL};
         if(cmdPipe(fd,args) < 0){
-           // if(message("E\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");}
+            if(message("E\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");}
             return errorHandler("Failed to pipe command.");
         }else{
-            //if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response to the client, oh dear.");}
+            if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response to the client, oh dear.");}
         }
         return 0;
     }else if(strncmp(command,"G",1) == 0){
@@ -227,11 +226,11 @@ int dataHandler(int fd, int psocket){
         printf("They trynna steal our files.\n");
         char* path = getPath(command);
         if(path == NULL){return errorHandler("Failed to get a path from the command.");}
-        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response.");}
         if(filePipe(fd,path) < 0){
             if(message("ECan't get that file\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");} 
             return errorHandler("Failed to send file to client.");
         }
+        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response.");}
         free(path);
     }else if(command[0] == 'P'){
         // PUT A FILE IN THE SERVER AT ITS CURRENT WORKING DIRECTORY o_o, GIB DATA
@@ -291,18 +290,19 @@ int connectionHandler(int socket){
                 char sName[20];// Assuming port wont be over 20 digits ¯\_(ツ)_/¯
                 int datasocket = startData(&name);
                 name = ntohs(name);
-                sprintf(sName, "A%d\n",name);
-                printf("Sending server: %s",sName);
-                if(message(sName,socket) < 0){
-                    // No beuno. Probably cant message that client ¯\_(ツ)_/¯
-                    errorHandler("'Guess I'll die?' - Server Child 2019");
-                    exit(1);
-                }
                 if(datasocket < 0){
                     // Bad news for the client :(
                     errorHandler("Failed to create data socket!");
                     message("E\n",socket);
                     exit(1);
+                }else{
+                    sprintf(sName, "A%d\n",name);
+                    printf("Sending server: %s",sName);
+                    if(message(sName,socket) < 0){
+                        // No beuno. Probably cant message that client ¯\_(ツ)_/¯
+                        errorHandler("'Guess I'll die?' - Server Child 2019");
+                        exit(1);
+                    }
                 }
                 printf("Successfully sent, awaiting a connection\n");
                 if(dataAccept(datasocket,socket) < 0){return errorHandler("Failed to accept connection, connectionHandler");}
@@ -311,9 +311,6 @@ int connectionHandler(int socket){
                 // Changin mah directory.
                 printf("Server recieved directory change request\n");
                 char* dir = getCommandDir(command);
-                if(dir != NULL){
-                    message("A\n",socket);
-                }
                 printf("Changing directory to %s\n",dir);
                 if(chdir(dir) < 0){
                     int size = strlen(dir)+100;
@@ -323,10 +320,10 @@ int connectionHandler(int socket){
                     free(response);
                     free(dir);
                     errorHandler("Unable to change directories");
-                }/*else{
-                    free(dir);
-                    message("A\n",socket);
-                }*/
+                }else{
+                   free(dir);
+                   message("A\n",socket);
+                }
 
 
             }else if(strncmp(command,"Q",2) == 0){
@@ -342,7 +339,7 @@ int connectionHandler(int socket){
             command = getwordsocket(socket);
             printf("Server has recieved command %s\n",command);
         }
-        
+
         //if(message(buffer,socket) < 0){exit(1);}
         exit(0);
     }else{
