@@ -84,13 +84,6 @@ int startData(int* name){   // Name will have the generated port number saved to
     }
     if(getsockname(sock,(struct sockaddr*)&inSockAddr,&sizevar) < 0){return errorHandler("Failed to get a socket name.");}
     *name = inSockAddr.sin_port;
-    sprintf(sName, "A%d\n",name);
-    printf("Sending server: %s",sName);
-    if(message(sName,socket) < 0){
-        // No beuno. Probably cant message that client ¯\_(ツ)_/¯
-        errorHandler("'Guess I'll die?' - Server Child 2019");
-        exit(1);
-    }
     // set to listen for connections.
     if(listen(sock,1) < 0){ return errorHandler("Failed to activate listening.");}
     return sock;
@@ -220,12 +213,13 @@ int dataHandler(int fd, int psocket){
     if(strncmp(command,"L",2) == 0){
         // ls -l :o requires data connection first. 
         printf("We boutta LS Wooooo\n");
+        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response to the client, oh dear.");}
         char* args[5] = {"ls","-l",NULL};
         if(cmdPipe(fd,args) < 0){
-            if(message("E\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");}
+           // if(message("E\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");}
             return errorHandler("Failed to pipe command.");
         }else{
-            if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response to the client, oh dear.");}
+            //if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response to the client, oh dear.");}
         }
         return 0;
     }else if(strncmp(command,"G",1) == 0){
@@ -233,11 +227,11 @@ int dataHandler(int fd, int psocket){
         printf("They trynna steal our files.\n");
         char* path = getPath(command);
         if(path == NULL){return errorHandler("Failed to get a path from the command.");}
+        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response.");}
         if(filePipe(fd,path) < 0){
             if(message("ECan't get that file\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");} 
             return errorHandler("Failed to send file to client.");
         }
-        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response.");}
         free(path);
     }else if(command[0] == 'P'){
         // PUT A FILE IN THE SERVER AT ITS CURRENT WORKING DIRECTORY o_o, GIB DATA
@@ -297,6 +291,13 @@ int connectionHandler(int socket){
                 char sName[20];// Assuming port wont be over 20 digits ¯\_(ツ)_/¯
                 int datasocket = startData(&name);
                 name = ntohs(name);
+                sprintf(sName, "A%d\n",name);
+                printf("Sending server: %s",sName);
+                if(message(sName,socket) < 0){
+                    // No beuno. Probably cant message that client ¯\_(ツ)_/¯
+                    errorHandler("'Guess I'll die?' - Server Child 2019");
+                    exit(1);
+                }
                 if(datasocket < 0){
                     // Bad news for the client :(
                     errorHandler("Failed to create data socket!");
@@ -309,8 +310,10 @@ int connectionHandler(int socket){
             }else if(command[0] == 'C'){
                 // Changin mah directory.
                 printf("Server recieved directory change request\n");
-                message("A\n",socket);
                 char* dir = getCommandDir(command);
+                if(dir != NULL){
+                    message("A\n",socket);
+                }
                 printf("Changing directory to %s\n",dir);
                 if(chdir(dir) < 0){
                     int size = strlen(dir)+100;
@@ -368,8 +371,8 @@ int getHost(struct sockaddr_in client){
 int message(char* msg, int socket){
     int len = strlen(msg);
     //if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
-    int res = write(socket,msg,len+1);
-    if(res != len+1){return errorHandler("Didn't write the entire message?!??!?!?!?!??!??!!!");}
+    int res = write(socket,msg,len);
+    if(res != len){return errorHandler("Didn't write the entire message?!??!?!?!?!??!??!!!");}
     return 0;
 }
 
