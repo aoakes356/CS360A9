@@ -81,19 +81,19 @@ char* getwordsocket(int socket){
             size *= 2;
             clientIn = realloc(clientIn,size*sizeof(char));
         }
-        if(clientIn[count-1] == '\n' || clientIn[count-1] == EOF){
+        if(clientIn[count-1] == '\n' || clientIn[count-1] == EOF || clientIn[count - 1] == '\0'){
             clientIn[count-1] = '\0';
             break;
         }
-        printf("read in: %c\n",c);
+        printf("read in: %c , %i\n",c,c);
     }
     if(count <= 1){
         free(clientIn);
         return NULL;
     }
-    if(rd){ // Get that null terminator out of that buffer >:I
+    /*if(rd){ // Get that null terminator out of that buffer >:I
         read(socket, &c, 1);
-    }
+    }*/
     printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
     printf("First character of the return %i\n",clientIn[0]);
     return clientIn;
@@ -146,7 +146,7 @@ int serverConnectPort(char* ip, int port){
     // Really not sure why this is necessary, but it is done in the slides.
     memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = port;
+    serverAddr.sin_port = htons(port);
     // Used to store the result of gethostby name 
     // will contain the server address in h_name
     struct hostent* hostEntry;
@@ -168,8 +168,8 @@ int serverConnectPort(char* ip, int port){
 int message(char* msg, int socket){
     int len = strlen(msg);
     //if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
-    int res = write(socket,msg,len+1);
-    if(res != len+1){return errorHandler("Didn't write the entire message?!??!?!?!?!??!??!!!");}
+    int res = write(socket,msg,len);
+    if(res != len){return errorHandler("Didn't write the entire message?!??!?!?!?!??!??!!!");}
     return 0;
 
 }
@@ -363,7 +363,8 @@ int processArgs(char** arguments, int socket, int argc, char* ip){
         if(argc > 1){
             strncat(argbuffer,arguments[1],size-3);
             argbuffer[size-4] = '\n';
-        }else{
+        }
+        else{
             argbuffer[1] = '\n';
             argbuffer[2] = '\0';
         }
@@ -373,7 +374,7 @@ int processArgs(char** arguments, int socket, int argc, char* ip){
             return errorHandler("Failed to message in arg handler.");
         }
         printf("Sent command to the parent. Waiting for acceptance.");
-        free(serverresponse);
+        //free(serverresponse);
         serverresponse = getwordsocket(socket);
         // recieve validation from the server. 
         if(serverresponse == NULL || strncmp(serverresponse,"A",2)){

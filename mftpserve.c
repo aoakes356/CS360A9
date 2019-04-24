@@ -84,6 +84,13 @@ int startData(int* name){   // Name will have the generated port number saved to
     }
     if(getsockname(sock,(struct sockaddr*)&inSockAddr,&sizevar) < 0){return errorHandler("Failed to get a socket name.");}
     *name = inSockAddr.sin_port;
+    sprintf(sName, "A%d\n",name);
+    printf("Sending server: %s",sName);
+    if(message(sName,socket) < 0){
+        // No beuno. Probably cant message that client ¯\_(ツ)_/¯
+        errorHandler("'Guess I'll die?' - Server Child 2019");
+        exit(1);
+    }
     // set to listen for connections.
     if(listen(sock,1) < 0){ return errorHandler("Failed to activate listening.");}
     return sock;
@@ -105,18 +112,18 @@ char* getwordsocket(int socket){
             size *= 2;
             clientIn = realloc(clientIn,size*sizeof(char));
         }
-        if(clientIn[count-1] == '\n' || clientIn[count-1] == EOF){
+        if(clientIn[count-1] == '\n' || clientIn[count-1] == EOF || clientIn[count-1] == '\0'){
             clientIn[count-1] = '\0';
             break;
-        }
+        }/*else if(clientIn[count-1] == 'D' || clientIn[count-1] == 'L' || clientIn[count-1] == 'Q'){
+            clientIn[count] = '\0';
+            break;
+        }*/
         printf("read in: %c\n",c);
     }
     if(count <= 1){
         free(clientIn);
         return NULL;
-    }
-    if(rd){ // Get that null terminator out of that buffer >:I
-        read(socket, &c, 1);
     }
     printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
     printf("First character of the return %i\n",clientIn[0]);
@@ -281,28 +288,28 @@ int connectionHandler(int socket){
     }else if(!res){
         // child.
         char* command = getwordsocket(socket);
+        
         while(command != NULL){
             if(strncmp(command,"D",2) == 0){
                 // Oh dear, data connection.
+                printf("Recieved data connection Request!\n");
                 int name;
                 char sName[20];// Assuming port wont be over 20 digits ¯\_(ツ)_/¯
                 int datasocket = startData(&name);
+                name = ntohs(name);
                 if(datasocket < 0){
                     // Bad news for the client :(
                     errorHandler("Failed to create data socket!");
                     message("E\n",socket);
                     exit(1);
                 }
-                sprintf(sName, "A%d\n",name);
-                if(message(sName,socket) < 0){
-                    // No beuno. Probably cant message that client ¯\_(ツ)_/¯
-                    errorHandler("'Guess I'll die?' - Server Child 2019");
-                    exit(1);
-                }
+                printf("Successfully sent, awaiting a connection\n");
                 if(dataAccept(datasocket,socket) < 0){return errorHandler("Failed to accept connection, connectionHandler");}
+                printf("Connection has been made!\n");
             }else if(command[0] == 'C'){
                 // Changin mah directory.
                 printf("Server recieved directory change request\n");
+                message("A\n",socket);
                 char* dir = getCommandDir(command);
                 printf("Changing directory to %s\n",dir);
                 if(chdir(dir) < 0){
@@ -313,14 +320,19 @@ int connectionHandler(int socket){
                     free(response);
                     free(dir);
                     errorHandler("Unable to change directories");
-                }else{
+                }/*else{
                     free(dir);
                     message("A\n",socket);
-                }
+                }*/
 
 
             }else if(strncmp(command,"Q",2) == 0){
                 // THE CLIENT WANTS YOU DEAD, feels bad man.
+                if(message("A\n",socket) < 0){
+                    // No beuno. Probably cant message that client ¯\_(ツ)_/¯
+                    errorHandler("'Guess I'll die?' - Server Child 2019");
+                    exit(1);
+                }
                 break;
             }
             printf("Server is awaiting a command!\n");
