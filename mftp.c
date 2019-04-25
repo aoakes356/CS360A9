@@ -169,14 +169,15 @@ int message(char* msg, int socket){
     int len = strlen(msg);
     //if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
     int res = write(socket,msg,len);
-    if(res != len){return errorHandler("Didn't write the entire message?!??!?!?!?!??!??!!!");}
+    if(res != len){return errorHandler("Didn't write the entire message.");}
     return 0;
 
 }
 
 // Get a message from the server.
 char* getData(int socket,int* length){
-    int rd = 1, size = 10, count = 0;
+    int rd = 1, size = 10;
+    long unsigned int count = 0;
     char* clientIn = malloc(sizeof(char)*size);
     char c;
     while(rd){
@@ -292,8 +293,6 @@ int createFile(char* path){
 }
 
 int copyFile(int source, int destination){
-    char c; // Wee little buffer.
-    int res;
     printf("Writing to fd: %i\n",destination);
     int len;
     char* data = getData(source,&len);
@@ -511,37 +510,17 @@ int moreify(char** arguments){
 
 int moreifyfd(int fd2){
     int outer = fork();
+    char* args[5] = {"more","-20",NULL};
     if(outer < 0){return errorHandler("Failed to fork.");}
-    if(!outer){
-        int fd[2];
-        char* args[5] = {"more","-20",NULL};
-        if(pipe(fd) < 0){ return errorHandler("Failed to create pipe.");}
-        int res = fork();
-        if(res < 0){return errorHandler("Failed to fork.");}
-        if(!res){
-            // Child.
-            dup2(fd[1],1);
-            if(close(fd[0]) < 0) fprintf(stderr,"%s\n",strerror(errno));
-            //execvp(arguments[0],arguments);
-            //return errorHandler("Failed to execute crap");
-            int length;
-            char* buffer = getData(fd2,&length);
-            if(write(1,buffer,length) == length){
-                exit(0);
-            }else{
-                exit(1);
-            }
-        }else{
-            // Parent.
-            wait(NULL);
-            dup2(fd[0],0);
-            if(close(fd[1]) < 0) fprintf(stderr,"%s\n",strerror(errno));
-            execvp(args[0],args);
-            return errorHandler("Failed to execute more!");
-        }
+    if(!outer){    
+        dup2(fd2,0);
+        execvp(args[0],args);
+        return errorHandler("Failed to execute more!");
+	return 0;
     }else{
+        // Parent.
         wait(NULL);
-        return 0;
     }
+    return 0;
 }
 

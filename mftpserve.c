@@ -33,12 +33,12 @@ int main(){
     int connectionfd;
     // wait for connection, fork each time there is a connection and deal with it.
     while(1){
-        if((connectionfd = accept(socket,(struct sockaddr*)&client,&length)) < 0){
+        if((connectionfd = accept(socket,(struct sockaddr*)&client,(socklen_t*)(&length))) < 0){
             return errorHandler("Failed to accept a connection.");
         }
         if(getHost(client) < 0){errorHandler("Failed to get hostname");}
         connectionHandler(connectionfd);
-	    close(connectionfd);
+	if(close(connectionfd) < 0){errorHandler("Failed to close a connection");}
     }
 }
 
@@ -198,8 +198,6 @@ int createFile(char* name){
 }
 
 int copyFile(int source, int destination){
-    char c; // Wee little buffer.
-    int res;
     printf("Writing to fd: %i\n",destination);
     int len;
     char* data = getData(source,&len);
@@ -231,8 +229,7 @@ int dataHandler(int fd, int psocket){
             }
         }
         free(command);
-        return 0;
-    }else if(strncmp(command,"G",1) == 0){
+    }else if(strncmp(command,"G",1) == 0){	// Fix me.
         // Get a file and put it in your local directoreeeeeeee, requires data connection
         printf("They trynna steal our files.\n");
         char* path = getPath(command);
@@ -254,23 +251,27 @@ int dataHandler(int fd, int psocket){
     }else if(command[0] == 'P'){
         // PUT A FILE IN THE SERVER AT ITS CURRENT WORKING DIRECTORY o_o, GIB DATA
         char* name = &(command[1]);
-        int len;
         int new = createFile(name);
         if(new < 0){
             if(message("ECan't put that file here.\n",psocket) < 0){return errorHandler("Failed to send error response to the client, wat.");} 
         }
-        if(message("A\n",psocket) < 0){return errorHandler("Failed to send accept response.");}
+        if(message("A\n",psocket) < 0){
+		if(close(new) < 0){errorHandler("Failed to close new file in put handler.");}
+		return errorHandler("Failed to send accept response.");
+	}
         if(copyFile(fd,new) < 0){return errorHandler("Failed to copy file in server.");}
     }else{
+	free(command);
         return errorHandler("Command not recognized");
     }
+    return 0;
 }
 int dataAccept(int datasocket, int psocket){
     struct sockaddr_in client;
     int length = sizeof(struct sockaddr_in);
     int connectionfd;
     // wait for connection, fork each time there is a connection and deal with it.
-    if((connectionfd = accept(datasocket,(struct sockaddr*)&client,&length)) < 0){
+    if((connectionfd = accept(datasocket,(struct sockaddr*)&client,(socklen_t*)(&length))) < 0){
         return errorHandler("Failed to accept a connection.");
     }
     if(getHost(client) < 0){errorHandler("Failed to get hostname");}
@@ -391,7 +392,7 @@ int message(char* msg, int socket){
     int len = strlen(msg);
     //if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
     int res = write(socket,msg,len);
-    if(res != len){return errorHandler("Didn't write the entire message?!??!?!?!?!??!??!!!");}
+    if(res != len){return errorHandler("Didn't write the entire message.");}
     return 0;
 }
 

@@ -7,29 +7,24 @@ SRC1 = mftpserve.c
 SRC2 = mftp.c
 HDR = $(wildcard *.h)
 OBJ = $(patsubst %.c, $(OBJDIR)/%.o, $(SRC))
-LIBS = -lm -Wall -lpthread
+LIBS = -lm -Wall -lpthread -g
 
 $(EXE1): $(OBJ)
-	$(CC) $(OBJ) -o $(EXE1) $(LIBS)
+	$(CC) $(SRC1) $(HDR) -o $(EXE1) $(LIBS)
 	
 $(EXE2): $(OBJ)
-	$(CC) $(OBJ) -o $(EXE2) $(LIBS)
-
-$(OBJDIR)/%.o: %.c $(HDR) | $(OBJDIR)
-	$(CC) -c $< -o $@ $(LIBS)
-
-$(OBJDIR):
-	mkdir -p $@
+	$(CC) $(SRC2) $(HDR) -o $(EXE2) $(LIBS)
 
 
-all: $(SRC) $(HDR)
-	$(CC) $(SRC) -o $(EXE) $(LIBS)
+all: $(SRC1) $(SRC2) $(HDR)
+	$(CC) $(SRC1) -o $(EXE1) $(LIBS)
+	$(CC) $(SRC2) -o $(EXE2) $(LIBS)
  
 clean:
-	rm -rf $(OBJDIR) $(EXE1) $(EXE2)
+	rm -rf $(EXE1) $(EXE2)
 
 run:
 	make
 	./server &
-	./client
+	./client localhost
 
