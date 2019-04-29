@@ -42,12 +42,6 @@ int main(){
     }
 }
 
-int errorHandler(char* message){ // Just a convenient method to have.
-    fprintf(stderr,"CSTMERR %s: %s\n", message, strerror(errno));
-    printf("%s: %s\n", message, strerror(errno));
-    return -1;
-}
-
 int startServer(){
     // Create the socket
     int sock = socket(PF_INET,SOCK_STREAM, IPPROTO_TCP);
@@ -89,122 +83,7 @@ int startData(int* name){   // Name will have the generated port number saved to
     return sock;
 }
 
-char* getwordsocket(int socket){ 
-    int rd = 1, size = 10, count = 0;
-    char* clientIn = malloc(sizeof(char)*size);
-    char c;
-    while(rd){ 
-        printf("Reading...\n");
-        if((rd = read(socket,&c,1)) < 0){ 
-            printf("Reads before failure %i\n",count);
-            errorHandler("Read error in connectionHandler");
-            free(clientIn);
-            return NULL;
-        }
-        if(rd > 0){
-            clientIn[count++] = c; 
-            if(count >= size && rd){
-                size *= 2;
-                clientIn = realloc(clientIn,size*sizeof(char));
-            }
-            if(clientIn[count-1] == '\n' || clientIn[count-1] == '\0'){
-                clientIn[count-1] = '\0';
-                break;
-            }
-            printf("read in: %c\n",c);
-        }else{
-            free(clientIn);
-            errorHandler("Data Connection closed by host.");
-            return NULL;
-        }
 
-    }
-    if(count <= 1){
-        free(clientIn);
-        return NULL;
-    }
-    printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
-    return clientIn;
-
-}
-char* getData(int socket,int* length){
-    int rd = 1, size = 10, count = 0;
-    char* clientIn = malloc(sizeof(char)*size);
-    char c;
-    while(rd){
-        if((rd = read(socket,&c,1)) < 0){
-            errorHandler("Read error in connectionHandler");
-            free(clientIn);
-            return NULL;
-        }
-        clientIn[count++] = c;
-        if(count >= size && rd){
-            size *= 2;
-            clientIn = realloc(clientIn,size*sizeof(char));
-        }
-        if(clientIn[count-1] == EOF){
-            errorHandler("Recieved EOF from the client in the server child.");
-            free(clientIn);
-            return NULL;
-        }
-    }
-    if(count <= 1){
-        clientIn[0] = '\0'; 
-        count = 1;
-    }
-    //printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
-    //printf("First character of the return %i\n",clientIn[0]);
-    *length = count;
-    return clientIn;
-}
-int filePipe(int datafd, char* path){
-    int fd = open(path,O_RDONLY);
-    if(fd < 0){return errorHandler("Unable to open file located at path");}
-    int len;
-    char* data = getData(fd,&len);
-    if(write(datafd,data,len) != len){return errorHandler("Failed to write entire file");}
-    return 0;
-}
-
-int cmdPipe(int datafd,char** arguments){
-    
-    int res = fork();
-    if(res < 0){return errorHandler("Failed to fork.");}
-    if(!res){
-        // Child.
-        printf("About to send data from cmd pipe.\n");
-        dup2(datafd,1);
-        execvp(arguments[0],arguments);
-        return errorHandler("Failed to execute command.");
-    }else{
-        wait(NULL);
-        return 0;        
-    }
-    //write(datafd,"get rekt\n",10);
-}
-
-char* getPath(char* command){
-    char* path = malloc(sizeof(char)*strlen(command));
-    strcpy(path,&(command[1])); 
-    printf("NEW PATH woo %s\n",path);
-    return path;
-}
-
-int createFile(char* name){
-    int fd;
-    if((fd = open(name,O_WRONLY | O_CREAT | O_APPEND,0666)) < 0){return errorHandler("Failed to create the new file in current directory.");}
-    printf("New file has the file descriptor %i\n",fd);
-    return fd;
-}
-
-int copyFile(int source, int destination){
-    printf("Writing to fd: %i\n",destination);
-    int len;
-    char* data = getData(source,&len);
-    if(data == NULL){return errorHandler("Failed to read the source file.");}
-    if(write(destination,data,len) != len){return errorHandler("Error while writing destination file.");}
-    return 0;
-}
 
 
 int dataHandler(int fd, int psocket){
@@ -261,7 +140,7 @@ int dataHandler(int fd, int psocket){
 	}
         if(copyFile(fd,new) < 0){return errorHandler("Failed to copy file in server.");}
     }else{
-	free(command);
+        free(command);
         return errorHandler("Command not recognized");
     }
     return 0;
@@ -280,18 +159,6 @@ int dataAccept(int datasocket, int psocket){
     close(connectionfd);
     return 0;
 }
-
-char* getCommandDir(char* command){
-    printf("Parsing command %s\n",command);
-    int len = strlen(command);
-    char* dirBuffer = malloc(sizeof(char)*len);
-    if(!sscanf(command,"C%s",dirBuffer)){
-        dirBuffer[0] = '\0';
-    }
-    return dirBuffer;
-}
-
-
 
 
 int connectionHandler(int socket){
@@ -388,11 +255,5 @@ int getHost(struct sockaddr_in client){
     return 0;
 }
 
-int message(char* msg, int socket){
-    int len = strlen(msg);
-    //if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
-    int res = write(socket,msg,len);
-    if(res != len){return errorHandler("Didn't write the entire message.");}
-    return 0;
-}
+
 

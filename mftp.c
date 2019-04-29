@@ -64,50 +64,6 @@ int main(int argc, char** argv){
     if(closeConnection(socket) < 0){return errorHandler("Failed to close connection.");}
 }
 
-char* getwordsocket(int socket){
-    int rd = 1, size = 10, count = 0;
-    char* clientIn = malloc(sizeof(char)*size);
-    char c;
-    while(rd){
-        printf("Reading...\n");
-        if((rd = read(socket,&c,1)) < 0){
-            printf("Reads before failure %i\n",count);
-            errorHandler("Read error in connectionHandler");
-            free(clientIn);
-            return NULL;
-        }
-        clientIn[count++] = c;
-        if(count >= size && rd){
-            size *= 2;
-            clientIn = realloc(clientIn,size*sizeof(char));
-        }
-        if(clientIn[count-1] == '\n' || clientIn[count-1] == EOF || clientIn[count - 1] == '\0'){
-            clientIn[count-1] = '\0';
-            break;
-        }
-        printf("read in: %c , %i\n",c,c);
-    }
-    if(count <= 1){
-        free(clientIn);
-        return NULL;
-    }
-    /*if(rd){ // Get that null terminator out of that buffer >:I
-        read(socket, &c, 1);
-    }*/
-    printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
-    printf("First character of the return %i\n",clientIn[0]);
-    return clientIn;
-
-}
-
-
-
-int errorHandler(char* message){ // Just a convenient method to have.
-    fprintf(stderr,"CSTMERR %s: %s\n", message, strerror(errno));
-    printf("%s: %s\n", message, strerror(errno));
-    return -1;
-}
-
 
 /* Create the socket for the client side to connect to the server
  * Then connect.
@@ -165,45 +121,8 @@ int serverConnectPort(char* ip, int port){
     return sock;
 }
 
-int message(char* msg, int socket){
-    int len = strlen(msg);
-    //if(send(socket,msg,(len),0) != len){return errorHandler("Didn't send expected number of bytes.");}
-    int res = write(socket,msg,len);
-    if(res != len){return errorHandler("Didn't write the entire message.");}
-    return 0;
 
-}
-
-// Get a message from the server.
-char* getData(int socket,int* length){
-    int rd = 1, size = 10;
-    long unsigned int count = 0;
-    char* clientIn = malloc(sizeof(char)*size);
-    char c;
-    while(rd){
-        if((rd = read(socket,&c,1)) < 0){
-            errorHandler("Read error in connectionHandler");
-            return NULL;
-        }
-        clientIn[count++] = c;
-        if(count >= size && rd){
-            size *= 2;
-            clientIn = realloc(clientIn,size*sizeof(char));
-        }
-        if(clientIn[count-1] == EOF){
-            clientIn[count-1] = '\0';
-            break;
-        }
-    }
-    if(count <= 1){
-        clientIn[0] = '\0';
-        count = 1;
-    }
-    //printf("Returning this in getwordsocket%s, count: %d\n",clientIn,count);
-    //printf("First character of the return %i\n",clientIn[0]);
-    *length = count;
-    return clientIn;
-}
+// Close with built in error checking.
 int closeConnection(int socket){
     if(close(socket) < 0){return errorHandler("Failed to close the file descriptor.");}
     return 0;
@@ -274,31 +193,6 @@ int getDataConnection(int socket, char* ip){
     }
     printf("connected to le port on the server.");
     return datafd;
-}
-
-char* getFileName(char* path){
-    int len = strlen(path), i;
-    for(i = len-1; i >= 0 && path[i] != '/'; i--){
-        if(path[i] == '\n'){
-            path[i] = '\0';
-        }
-    }
-    return &(path[++i]);
-}
-int createFile(char* path){
-    int fd;
-    if((fd = open(getFileName(path),O_WRONLY | O_CREAT | O_APPEND,0666)) < 0){return errorHandler("Failed to create the new file in current directory.");}
-    printf("New file has the file descriptor %i\n",fd);
-    return fd;
-}
-
-int copyFile(int source, int destination){
-    printf("Writing to fd: %i\n",destination);
-    int len;
-    char* data = getData(source,&len);
-    if(data == NULL){return errorHandler("Failed to read the source file.");}
-    if(write(destination,data,len) != len){return errorHandler("Error while writing destination file.");}
-    return 0;
 }
 
 int processArgs(char** arguments, int socket, int argc, char* ip){
@@ -394,7 +288,7 @@ int processArgs(char** arguments, int socket, int argc, char* ip){
         }
     }else if(strncmp(arguments[0],"get",3) == 0){
         // Get a file from the server
-        printf("Getting a file from teh server.\n");
+        printf("Getting a file from the server.\n");
         int datafd = getDataConnection(socket,ip);
         if(datafd < 0){return errorHandler("Failed to get data connection.");}
         //Establish the connection.
